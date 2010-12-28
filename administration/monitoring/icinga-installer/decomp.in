@@ -1,0 +1,39 @@
+PATH=/bin:/usr/bin
+umask 022
+
+# Snippets and file handling assembled from
+# http://www.franzone.com/2008/08/14/how-to-create-a-bash-install-script/
+# http://www.linuxjournal.com/node/1005818
+
+
+# Number of lines in this script file (plus 1)
+SCRIPT_LINES=$(([[SCRIPT_LINES]] + 1))
+
+# Run /bin/sum on your binary and put the two values here
+SUM1=[[FIRST_SUM]]
+SUM2=[[SECOND_SUM]]
+
+STARTDIR=$(cd `dirname $0` && pwd)
+BINARY=payload.tgz
+
+TMPDIR=`mktemp -d /tmp/icinga-installer.XXXXXXXXXX`
+
+echo "Unpacking binary files..."
+tail -n +$SCRIPT_LINES "$0" > ${TMPDIR}/${BINARY}
+SUM=`sum ${TMPDIR}/${BINARY}` 
+ASUM1=`echo "${SUM}" | awk '{print $1}'`
+ASUM2=`echo "${SUM}" | 
+awk '{print $2}'`
+if [ ${ASUM1} -ne ${SUM1} ] || [ ${ASUM2} -ne ${SUM2} ]; then
+    echo "The download file appears to be corrupted. Please download"
+    echo "the file again and re-try the installation."
+    exit 1
+fi
+
+tar -x -C ${TMPDIR} -f ${TMPDIR}/${BINARY}
+cd ${TMPDIR}
+./setup.sh "$@"
+cd ${STARTDIR}
+rm -rf ${TMPDIR}
+exit 0
+# MARKER: DO NOT REMOVE ################### END_OF_SCRIPT #############################################################

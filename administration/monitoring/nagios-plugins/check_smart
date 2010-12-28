@@ -1,0 +1,21 @@
+#!/bin/bash
+
+if [ ! `whoami` == "root" ]; 
+then
+    echo "This script needs root privileges!"
+    exit 1
+fi
+
+AWK_EXTRACT="/Raw_Read_Error_Rate/ {rrer = \$4};\
+    /Reallocated_Sector_Ct/ {rsct = \$4};\
+    /Spin_Retry_Count/ {srct = \$4};\
+    /Temperature_Celsius/ {temp = \$10};\
+    /Reallocated_Event_Count/ {rect = \$4};\
+    END {print rrer,rsct,srct,temp,rect}"
+#echo $AWK_EXTRACT
+DATA=(`smartctl -A -H /dev/sda | awk "${AWK_EXTRACT}"`)
+for i in ${DATA[@]};
+do
+    echo $i;
+done
+

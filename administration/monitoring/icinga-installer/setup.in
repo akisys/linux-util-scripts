@@ -1,0 +1,473 @@
+#!/bin/bash
+
+# Author: Alexander Kuemmel
+ICINGA_VERSION="1.2.1"
+NAGIOS_PLUGINGS_VERSION="1.4.15"
+NRPE_VERSION="2.12"
+
+ICINGA_URL="http://sourceforge.net/projects/icinga/files/icinga/${ICINGA_VERSION}/icinga-${ICINGA_VERSION}.tar.gz/download"
+NAGIOS_PLUGINS_URL="http://sourceforge.net/projects/nagiosplug/files/nagiosplug/${NAGIOS_PLUGINGS_VERSION}/nagios-plugins-${NAGIOS_PLUGINGS_VERSION}.tar.gz/download"
+NRPE_URL="http://sourceforge.net/projects/nagios/files/nrpe-2.x/nrpe-${NRPE_VERSION}/nrpe-${NRPE_VERSION}.tar.gz/download"
+
+
+SYSTEM_USER="icinga"
+SYSTEM_GROUP="icinga"
+ICINGA_DB="icinga"
+ICINGA_DBUSER="icinga"
+ICINGA_DBPASS="icinga"
+
+BASEDIR="/usr/local/"
+
+DESTDIR=${BASEDIR}/icinga
+INSTALL=/usr/bin/install
+
+STARTDIR=$(cd `dirname $(type -p $0)` && pwd)
+PKGDIR="${STARTDIR}/packages"
+SCRIPTDIR="${STARTDIR}/scripts"
+CFGDIR="${STARTDIR}/configs"
+
+DEPLOYMENT_ARCHIVE=[[DEPLOYMENT]]
+
+# important setting: bail on any errors (else we have to check every single
+# command!)
+set -e
+
+# ----------------------------------------------------------------------
+# bootstrap and main
+# ----------------------------------------------------------------------
+if [[ $1 != boot/strap ]]
+then
+    # From a gitolite setup script, what a nice solution!!!!
+    #
+    # did someone tell you you can't call functions before they're defined in
+    # bash?  Don't believe everything you hear ;-)
+    . $0 boot/strap
+    f_Main "$@"
+    exit 0
+fi
+
+f_Main(){
+    #{{{
+    choice=$1 || ""
+    case $choice in
+    --hostinstall) f_FullInstall;;
+    --dbinstall  ) f_Icinga_MySQL_Setup;;
+    --deployconfigs ) f_DeployConfigs;;
+    --clientinstall ) f_ClientInstall;;
+    --help       ) f_Help;;
+                *) f_Help; echo "Menu option unrecognized" >&2; exit 1;;
+    esac
+    exit 0;
+    #}}}
+}
+
+f_Help(){
+    #{{{
+    cat <<EOM
+USAGE: $0 <OPTION>
+
+OPTIONS:
+--help               This message
+--hostinstall        Full installation of Icinga and Plugins
+
+EOM
+    #}}}
+}
+
+f_FullInstall(){
+    #{{{ 
+    echo "Checking user requirements"
+    f_AddSystemUser
+    echo "Installing compilation requirements"
+    f_InstallCompilationRequirements
+    echo "Installing Icinga requirements"
+    f_InstallIcingaRequirements
+    echo "Installing runtime requirements"
+    f_InstallRuntimeRequirements
+    
+    if test ! -d ${PKGDIR}; then
+        mkdir -p ${PKGDIR}
+    fi
+
+    echo "Installing Icinga ${ICINGA_VERSION} into ${DESTDIR}"
+    f_Install_ICINGA "$(f_Prepare_ICINGA ${PKGDIR})"
+    
+    echo "Installing Nagios-Plugins ${NAGIOS_PLUGINGS_VERSION} into ${DESTDIR}"
+    
+    f_Install_NAGIOS_PLUGINS "$(f_Prepare_NAGIOS_PLUGINS ${PKGDIR})"
+
+    echo "Installing NRPE-Plugin ${NRPE_VERSION} into ${DESTDIR}"
+    
+    f_Install_NRPE "$(f_Prepare_NRPE ${PKGDIR})"
+
+    echo "Installation finished"
+    #}}}
+}
+
+f_ClientInstall(){
+    #{{{
+    if [ ! -e "${STARTDIR}/${DEPLOYMENT_ARCHIVE}" ]; then
+        echo "Missing deployment archive ${DEPLOYMENT_ARCHIVE}, exiting."
+        exit 1
+    fi
+    if [ ! -d "${STARTDIR}/binaries/client" ]; then
+        f_PrepareArchive "${STARTDIR}" "${DEPLOYMENT_ARCHIVE}"
+    fi
+    f_NeedRoot
+    ARCHS=`ls "${STARTDIR}/binaries/client/"`
+    for arch in $ARCHS;
+    do
+        if [ $arch = `uname -m` ]; then
+            echo "Found architecture : ${arch}."
+            f_AddSystemUser
+            echo "Deploying binaries."
+            ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -m 755 -d ${DESTDIR} || exit 1
+            # copy over pre-compiled binaries
+            cp --archive ${STARTDIR}/binaries/client/${arch}/* ${DESTDIR} || exit 1
+            # setup owner
+            chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/bin/ || exit 1
+            chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/libexec/ || exit 1
+            # setup owner rights
+            chmod -R 755 ${DESTDIR}/etc/ || exit 1
+
+            echo "Deploying configuration."
+            f_DeployNRPEConfigs
+            return 0
+        fi
+    done
+    echo "No binaries for your architecture available, compile yourselfe and deploy." >&2
+    exit 1
+    #}}}
+}
+
+f_DeployConfigs(){
+    f_DeployIcingaConfigs
+    f_DeployNRPEConfigs
+}
+
+f_DeployIcingaConfigs(){
+    #{{{
+    if [ ! -e "${STARTDIR}/${DEPLOYMENT_ARCHIVE}" ]; then
+        echo "Missing deployment archive ${DEPLOYMENT_ARCHIVE}, exiting."
+        exit 1
+    fi
+    if [ ! -d "${STARTDIR}/configs/icinga/" ]; then
+        f_PrepareArchive "${STARTDIR}" "${DEPLOYMENT_ARCHIVE}"
+    fi
+    f_NeedRoot
+    # create folder structure
+    ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -d ${DESTDIR}/etc/objects/hosts || exit 1
+    # copy over icinga configs incl. hosts and webis-configs
+    cp --archive ${STARTDIR}/configs/icinga/etc/* ${DESTDIR}/etc/ || exit 1
+    # setup owner
+    chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/etc/ || exit 1
+    # setup owner rights
+    chmod -R 755 ${DESTDIR}/etc/ || exit 1
+    
+    # install apache web-config
+    ${INSTALL} -o root -g root -m 644 ${STARTDIR}/configs/icinga/apache/* /etc/apache2/conf.d/ || exit 1
+    
+    # test configuration
+    ${DESTDIR}/bin/icinga -v ${DESTDIR}/etc/icinga.cfg
+
+    if [ $? -ne 0 ]; then
+        echo "Configuration deployment failed"
+        exit 1
+    fi
+    #}}}
+}
+
+f_DeployNRPEConfigs(){
+    #{{{
+    if [ ! -e "${STARTDIR}/${DEPLOYMENT_ARCHIVE}" ]; then
+        echo "Missing deployment archive ${DEPLOYMENT_ARCHIVE}, exiting."
+        exit 1
+    fi
+    if [[ ! -d "${STARTDIR}/configs/nrpe/" || ! -d "${STARTDIR}/scripts/init-scripts/" ]]; then
+        f_PrepareArchive "${STARTDIR}" "${DEPLOYMENT_ARCHIVE}"
+    fi
+    f_NeedRoot
+    # create folder structure
+    ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -d ${DESTDIR}/etc || exit 1
+    # install nrpe config
+    ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -m 644 ${STARTDIR}/configs/nrpe/nrpe.cfg ${DESTDIR}/etc/ || exit 1
+    # install nrpe daemon
+    ${INSTALL} -g root -o root -m 755 ${STARTDIR}/scripts/init-scripts/nrped /etc/init.d/ || exit 1
+    #}}}
+}
+
+f_Icinga_MySQL_Setup(){
+    #{{{
+    if [ "${1}" = "fresh" ]; then
+        echo "Doing database cleanup"
+        echo "!Need mysql Root-User password now!"
+        mysqladmin -u root -p drop $ICINGA_DB
+        if [ $? -ne 0 ]; then
+            echo "Error in database cleanup"
+            exit 1;
+        fi
+        echo "Cleanup done!"
+    fi
+
+    f_Install_IcingaDatabase
+    f_Install_IcingaTables
+    #}}} 
+}
+
+f_Install_IcingaDatabase(){
+    #{{{
+    # test database existance
+    echo "Checking database status!"
+    echo "!Need mysql Root-User password now!"
+    DBS=`mysql -u root -p -Bse 'show databases'|egrep -v 'information_schema|mysql'`
+    for db in $DBS;
+    do
+        if [ "${db}" = "${ICINGA_DB}" ]; then
+            echo "Database exists, no need to configure";
+            return;
+        fi
+    done
+    echo "Creating new database ${ICINGA_DB}"
+    echo "!Need mysql Root-User password now!"
+    #mysqladmin -u root -p create $ICINGA_DB
+    mysql -u root -p -Bse <<EOM
+CREATE DATABASE ${ICINGA_DB};
+GRANT USAGE ON *.* TO '${ICINGA_DBUSER}'@'localhost' IDENTIFIED BY '${ICINGA_DBPASS}' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0;
+GRANT SELECT , INSERT , UPDATE , DELETE ON ${ICINGA_DB}.* TO '${ICINGA_DBUSER}'@'localhost';
+FLUSH PRIVILEGES ;
+quit
+EOM
+    if [ $? -ne 0 ]; then
+        echo "Error in database setup";
+        exit 1;
+    fi
+    echo "Database created"
+    #}}}
+}
+
+f_Install_IcingaTables(){
+    #{{{
+    echo "Checking table structure"
+    tablecount=$((`mysql -u root -p -Bse "SHOW TABLES FROM $ICINGA_DB"|wc -l`))
+    if [ $tablecount -ne 0 ]; then
+        echo "Database is not empty, will not continue deploying structure"
+        exit 1;
+    fi
+    f_Prepare_ICINGA ${PKGDIR}
+    echo "Deploying table structures"
+    echo "!Need mysql Root-User password now!"
+    mysql -u root -p ${ICINGA_DB} < ${PKGDIR}/icinga-${ICINGA_VERSION}/module/idoutils/db/mysql/mysql.sql
+    if [ $? -ne 0 ]; then
+        echo "Error in table setup";
+        exit 1;
+    fi
+    #}}}
+}
+
+f_AddSystemUser(){
+    #{{{
+    if ! egrep -e "^${SYSTEM_USER}:.*$" /etc/passwd >/dev/null; then
+        echo "Create new system-user: ${SYSTEM_USER}"
+        f_NeedRoot
+        useradd -n ${BASEDIR} -M --system ${SYSTEM_USER}
+        if [ $? -ne 0 ]; then
+            echo "Error during user creation."
+            exit 1
+        fi
+    fi
+    #}}}
+}
+
+f_NeedRoot(){
+    #{{{
+    if [ ! $(id -u) == "0" ];
+    then
+        echo "You need to be root to run this script!"
+        exit 1
+    fi
+    #}}}
+}
+
+f_InstallCompilationRequirements(){
+    #{{{
+    f_NeedRoot
+    aptitude update && aptitude install \
+        build-essential \
+        libgd2-xpm-dev \
+        libjpeg-dev \
+        libpng-dev \
+        #mysql-server \
+        #mysql-client \
+        libdbi0-dev \
+        #libapache2-mod-php5 \
+        #php5-mysql \
+        snmp 
+        #\
+        #samba-common \
+        #samba-client
+    if [ $? -ne 0 ]; then
+        echo "Error during installation of compilation requirements"
+        exit 1
+    fi
+    #}}}
+}
+
+f_InstallIcingaRequirements(){
+    #{{{
+    f_NeedRoot
+    aptitude update && aptitude install \
+        openssl \
+        snmp \
+        mysql-server \
+        mysql-client \
+        libapache2-mod-php5 \
+        php5-mysql
+    if [ $? -ne 0]; then
+        echo "Error during installation of Icinga requirements"
+        exit 1
+    fi
+    #}}}
+}
+
+f_InstallRuntimeRequirements(){
+    #{{{
+    f_NeedRoot
+    aptitude update && aptitude install \
+        openssl \
+        snmp \
+        smartmontools
+    if [ $? -ne 0 ]; then
+        echo "Error during installation of runtime requirements"
+        exit 2
+    fi
+    #}}}
+}
+
+
+f_DownloadArchive(){
+    wget -O $1/$2 $3 || exit 1
+}
+
+f_PrepareArchive(){
+    tar -x -C ${1} -f ${1}/${2} || exit 1
+}
+
+f_Prepare_ICINGA(){
+    #{{{
+    if test ! -d "${1}"; then
+        mkdir -p $1
+    fi
+    if test ! -e "${1}/icinga-${ICINGA_VERSION}.tar.gz"; then
+        f_DownloadArchive "${1}/" "icinga-${ICINGA_VERSION}.tar.gz" ${ICINGA_URL}
+    fi
+    f_PrepareArchive "${1}/" "icinga-${ICINGA_VERSION}.tar.gz"
+    echo "${1}/icinga-${ICINGA_VERSION}/"
+    #}}}
+}
+
+f_Compile_ICINGA(){
+    #{{{
+    ${1}/configure \
+        --prefix=${BASEDIR} \
+        --enable-idoutils \
+        --enable-ssl \
+        --with-icinga-group=${SYSTEM_USER} \
+        --with-icinga-user=${SYSTEM_USER} \
+        --with-command-group=${SYSTEM_USER} \
+        --with-command-user=${SYSTEM_USER} && \
+        make all || exit 1
+    #}}}
+}
+
+f_Install_ICINGA(){
+    #{{{
+    f_Compile_ICINGA ${1}
+    cd "${1}"
+    if [ $? -eq 0 ]; then
+        f_NeedRoot
+        make install && \
+        make install-init && \
+        make install-commandmode && \
+        make install-idoutils && \
+        make install-webconf && \
+        make distclean
+    fi
+    cd ${STARTDIR}
+    #}}}
+}
+
+f_Prepare_NRPE(){
+    #{{{
+    if test ! -d "${1}"; then
+        mkdir -p $1
+    fi
+    if test ! -e "${1}/nrpe-${NRPE_VERSION}.tar.gz"; then
+        f_DownloadArchive "${1}/" "nrpe-${NRPE_VERSION}.tar.gz" ${NRPE_URL}
+    fi
+    f_PrepareArchive "${1}/" "nrpe-${NRPE_VERSION}.tar.gz"
+    echo "${1}/nrpe-${NRPE_VERSION}/"
+    #}}}
+}
+
+f_Compile_NRPE(){
+    #{{{
+    ${1}/configure \
+        --prefix=${BASEDIR}/icinga\
+        --with-nrpe-user=${SYSTEM_USER} \
+        --with-nrpe-group=${SYSTEM_USER} \
+        --with-nagios-user=${SYSTEM_USER} \
+        --with-nagios-group=${SYSTEM_USER} && \
+        make all || exit 1
+    #}}}
+}
+
+f_Install_NRPE(){
+    #{{{
+    f_Compile_NRPE ${1}
+    cd ${1}
+    if [ $? -eq 0 ]; then
+        f_NeedRoot
+        make install-plugin && \
+        make install-daemon && \
+        make distclean
+    fi
+    cd ${STARTDIR}
+    #}}}
+}
+
+f_Prepare_NAGIOS_PLUGINS(){
+    #{{{
+    if test ! -d "${1}"; then
+        mkdir -p $1
+    fi
+    if test ! -e "${1}/nagios-plugins-${NAGIOS_PLUGINGS_VERSION}.tar.gz"; then
+        f_DownloadArchive "${1}/" "nagios-plugins-${NAGIOS_PLUGINGS_VERSION}.tar.gz" ${NAGIOS_PLUGINS_URL}
+    fi
+    f_PrepareArchive "${1}/" "nagios-plugins-${NAGIOS_PLUGINGS_VERSION}.tar.gz"
+    echo "${1}/nagios-plugins-${NAGIOS_PLUGINGS_VERSION}/"
+    #}}}
+}
+
+f_Compile_NAGIOS_PLUGINS(){
+    #{{{
+    ${1}/configure && \
+        --prefix=${DESTDIR} \
+        --with-nagios-user=${SYSTEM_USER} \
+        --with-nagios-group=${SYSTEM_USER} && \
+        make || exit 1
+    #}}}
+}
+
+f_Install_NAGIOS_PLUGINS(){
+    #{{{
+    f_Compile_NAGIOS_PLUGINS ${1}
+    cd ${1}
+    if [ $? -eq 0 ]; then
+        f_NeedRoot
+        make install && \
+        make distclean
+    fi
+    cd ${STARTDIR}
+    #}}}
+}
+

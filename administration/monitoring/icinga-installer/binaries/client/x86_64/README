@@ -1,0 +1,5 @@
+Deploy your compiled files of NRPE and NAGIOS-PLUGINS package in
+folders:
+bin
+libexec
+
