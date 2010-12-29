@@ -21,6 +21,7 @@ build-installer: init
 	@echo -n "Building installer ... "
 	@cat $(EXTRACTOR_FILE) $(INSTALLER_PAYLOAD) > $(INSTALLER_FILE)
 	@chmod 755 $(INSTALLER_FILE)
+	@md5sum -b $(INSTALLER_FILE) > $(INSTALLER_FILE).md5
 	@echo "Done!"
 
 init: prepare-installer; @echo -n "Preparing requirements ... "

@@ -1,4 +1,4 @@
-PATH=/bin:/usr/bin
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
 umask 022
 
 # Snippets and file handling assembled from
