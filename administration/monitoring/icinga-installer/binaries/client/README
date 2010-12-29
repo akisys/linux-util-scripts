@@ -1,5 +1,10 @@
+
+For each platform create a folder with 
+
+mkdir `uname -m`
+
 Deploy your compiled files of NRPE and NAGIOS-PLUGINS package in
-folders:
+subfolders:
 bin
 libexec
 
