@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Author: Alexander Kuemmel
+# Script author: Alexander Kuemmel
+# This script was build according to a tutorial found here:
+# http://www.fishfood.co.nz/2010/02/howto-to-tie-yucatan-knot.html
+# and other information inside the readme files of each package.
+
 ICINGA_VERSION="1.2.1"
 NAGIOS_PLUGINGS_VERSION="1.4.15"
 NRPE_VERSION="2.12"
@@ -50,7 +54,7 @@ f_Main(){
     #{{{
     choice=$1 || ""
     case $choice in
-    --hostinstall) f_FullInstall;;
+    --hostinstall) f_HostInstall;;
     --dbinstall  ) f_Icinga_MySQL_Setup;;
     --deployconfigs ) f_DeployConfigs;;
     --clientinstall ) f_ClientInstall;;
@@ -69,12 +73,16 @@ USAGE: $0 <OPTION>
 OPTIONS:
 --help               This message
 --hostinstall        Full installation of Icinga and Plugins
+--clientinstall      Client installation of NRPE Icinga RPC-Plugin 
+                     and data collection plugins
+--dbinstall          Deploy database structure and information
+--deployconfigs      Deploy user configs
 
 EOM
     #}}}
 }
 
-f_FullInstall(){
+f_HostInstall(){
     #{{{ 
     echo "Checking user requirements"
     f_AddSystemUser
@@ -93,14 +101,21 @@ f_FullInstall(){
     f_Install_ICINGA "$(f_Prepare_ICINGA ${PKGDIR})"
     
     echo "Installing Nagios-Plugins ${NAGIOS_PLUGINGS_VERSION} into ${DESTDIR}"
-    
     f_Install_NAGIOS_PLUGINS "$(f_Prepare_NAGIOS_PLUGINS ${PKGDIR})"
 
     echo "Installing NRPE-Plugin ${NRPE_VERSION} into ${DESTDIR}"
-    
     f_Install_NRPE "$(f_Prepare_NRPE ${PKGDIR})"
 
+    echo "Setup Icinga database"
+    f_Install_IcingaDatabase "fresh"
+    f_Install_IcingaTables 
+
+    echo "Deploying configurations"
+    f_DeployConfigs
+
     echo "Installation finished"
+
+    
     #}}}
 }
 
@@ -113,12 +128,12 @@ f_ClientInstall(){
     if [ ! -d "${STARTDIR}/binaries/client" ]; then
         f_PrepareArchive "${STARTDIR}" "${DEPLOYMENT_ARCHIVE}"
     fi
-    f_NeedRoot
     ARCHS=`ls "${STARTDIR}/binaries/client/"`
     for arch in $ARCHS;
     do
         if [ $arch = `uname -m` ]; then
             echo "Found architecture : ${arch}."
+            f_NeedRoot
             f_AddSystemUser
             echo "Deploying binaries."
             ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -m 755 -d ${DESTDIR} || exit 1
@@ -132,6 +147,8 @@ f_ClientInstall(){
 
             echo "Deploying configuration."
             f_DeployNRPEConfigs
+            echo "Installing required software packages"
+            f_InstallRuntimeRequirements
             return 0
         fi
     done
@@ -199,24 +216,12 @@ f_DeployNRPEConfigs(){
 
 f_Icinga_MySQL_Setup(){
     #{{{
-    if [ "${1}" = "fresh" ]; then
-        echo "Doing database cleanup"
-        echo "!Need mysql Root-User password now!"
-        mysqladmin -u root -p drop $ICINGA_DB
-        if [ $? -ne 0 ]; then
-            echo "Error in database cleanup"
-            exit 1;
-        fi
-        echo "Cleanup done!"
-    fi
-
     f_Install_IcingaDatabase
     f_Install_IcingaTables
     #}}} 
 }
 
-f_Install_IcingaDatabase(){
-    #{{{
+f_DB_Check(){
     # test database existance
     echo "Checking database status!"
     echo "!Need mysql Root-User password now!"
@@ -224,10 +229,29 @@ f_Install_IcingaDatabase(){
     for db in $DBS;
     do
         if [ "${db}" = "${ICINGA_DB}" ]; then
-            echo "Database exists, no need to configure";
-            return;
+            return 0;
         fi
     done
+    return 1;
+}
+
+f_Install_IcingaDatabase(){
+    #{{{
+    if [[ $(f_DB_Check) -eq 0 && "$1" != "fresh" ]]; then
+        echo "Database exists, no need to configure";
+        return 1;
+    fi
+    if [ "$1" = "fresh" ]; then
+        echo "Database cleanup requested"
+        echo "!Need mysql Root-User password now!"
+        mysqladmin -u root -p drop $ICINGA_DB
+        if [ $? -ne 0 ]; then
+            echo "Error in database cleanup" >&2;
+            exit 1;
+        fi
+        echo "Cleanup done!"
+    fi
+
     echo "Creating new database ${ICINGA_DB}"
     echo "!Need mysql Root-User password now!"
     #mysqladmin -u root -p create $ICINGA_DB
@@ -239,7 +263,7 @@ FLUSH PRIVILEGES ;
 quit
 EOM
     if [ $? -ne 0 ]; then
-        echo "Error in database setup";
+        echo "Error in database setup" >&2;
         exit 1;
     fi
     echo "Database created"
@@ -252,14 +276,14 @@ f_Install_IcingaTables(){
     tablecount=$((`mysql -u root -p -Bse "SHOW TABLES FROM $ICINGA_DB"|wc -l`))
     if [ $tablecount -ne 0 ]; then
         echo "Database is not empty, will not continue deploying structure"
-        exit 1;
+        return 1;
     fi
     f_Prepare_ICINGA ${PKGDIR}
     echo "Deploying table structures"
     echo "!Need mysql Root-User password now!"
     mysql -u root -p ${ICINGA_DB} < ${PKGDIR}/icinga-${ICINGA_VERSION}/module/idoutils/db/mysql/mysql.sql
     if [ $? -ne 0 ]; then
-        echo "Error in table setup";
+        echo "Error in table setup" >&2;
         exit 1;
     fi
     #}}}
@@ -272,8 +296,8 @@ f_AddSystemUser(){
         f_NeedRoot
         useradd -n ${BASEDIR} -M --system ${SYSTEM_USER}
         if [ $? -ne 0 ]; then
-            echo "Error during user creation."
-            exit 1
+            echo "Error during user creation." >&2;
+            exit 1;
         fi
     fi
     #}}}
@@ -283,8 +307,8 @@ f_NeedRoot(){
     #{{{
     if [ ! $(id -u) == "0" ];
     then
-        echo "You need to be root to run this script!"
-        exit 1
+        echo "You need to be root to run this script!" >&2;
+        exit 1;
     fi
     #}}}
 }

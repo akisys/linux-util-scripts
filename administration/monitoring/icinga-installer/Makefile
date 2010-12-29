@@ -13,7 +13,7 @@ INSTALLER_FILE= icinga_setup.bin
 
 SUMCMD=/usr/bin/sum $(PWD)/$(INSTALLER_PAYLOAD)
 
-.PHONY: clean clean-up pack-archive
+.PHONY: clean clean-up prepare-data
 
 all: build-installer clean-up
 	 
@@ -37,9 +37,12 @@ prepare-payload: prepare-setup
 prepare-setup: prepare-data
 	@sed "s/\[\[DEPLOYMENT\]\]/$(DATA_FILE)/g" $(SCRIPT_SRC)>$(SCRIPT_FILE)
 	@chmod +x $(SCRIPT_FILE)
+	@bash -n $(SCRIPT_FILE)
 
 prepare-data:
-	@tar czvf $(PWD)/$(DATA_FILE) $(DATA_FOLDERS)
+	@tar czvf $(PWD)/$(DATA_FILE) --exclude="\.git*" $(DATA_FOLDERS)
+
+testsetup: prepare-setup
 
 distclean: clean clean-up
 
