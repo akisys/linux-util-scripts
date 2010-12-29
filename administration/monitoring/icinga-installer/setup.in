@@ -128,7 +128,7 @@ f_ClientInstall(){
             chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/bin/ || exit 1
             chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/libexec/ || exit 1
             # setup owner rights
-            chmod -R 755 ${DESTDIR}/etc/ || exit 1
+            chmod -R 755 ${DESTDIR}/bin/ ${DESTDIR}/libexec/ || exit 1
 
             echo "Deploying configuration."
             f_DeployNRPEConfigs
@@ -162,7 +162,8 @@ f_DeployIcingaConfigs(){
     # setup owner
     chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/etc/ || exit 1
     # setup owner rights
-    chmod -R 755 ${DESTDIR}/etc/ || exit 1
+    chmod 755 ${DESTDIR}/etc/ || exit 1
+    find ${DESTDIR}/etc/ -type f -exec chmod 640 {} \; || exit 1
     
     # install apache web-config
     ${INSTALL} -o root -g root -m 644 ${STARTDIR}/configs/icinga/apache/* /etc/apache2/conf.d/ || exit 1
