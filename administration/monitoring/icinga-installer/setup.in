@@ -112,7 +112,7 @@ f_HostInstall(){
 
     echo "Deploying configurations"
     f_DeployConfigs
-    find ${DESTDIR}/etc/ -type f -exec chmod 644 {} \; || exit 1
+    find ${DESTDIR}/etc/ -type f -exec chmod 640 {} \; || exit 1
 
     echo "Installation finished"
 
