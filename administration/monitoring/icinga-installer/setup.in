@@ -54,10 +54,17 @@ f_Main(){
     #{{{
     choice=$1 || ""
     case $choice in
-    --hostinstall) f_HostInstall;;
-    --dbinstall  ) f_Icinga_MySQL_Setup;;
-    --deployconfigs ) f_DeployConfigs;;
-    --clientinstall ) f_ClientInstall;;
+--hostinstall) f_HostInstall;;
+--dbinstall  ) f_Icinga_MySQL_Setup;;
+--clientinstall ) f_ClientInstall;;
+--install-icinga) f_Install-Icinga;;
+--install-plugins) f_Install-Plugins;;
+--install-nrpe) f_Install-NRPE;;
+--install-devpacks) f_InstallCompilationRequirements;;
+--install-clientruntime) f_InstallRuntimeRequirements;;
+--install-icingaruntime) f_InstallIcingaRequirements;;
+--install-configs) f_Install-Configs;;
+--install-db) f_Install-DB;;
     --help       ) f_Help;;
                 *) f_Help; echo "Menu option unrecognized" >&2; exit 1;;
     esac
@@ -92,32 +99,42 @@ f_HostInstall(){
     f_InstallIcingaRequirements
     echo "Installing runtime requirements"
     f_InstallRuntimeRequirements
-    
-    if test ! -d ${PKGDIR}; then
-        mkdir -p ${PKGDIR}
-    fi
+   
+    f_Install-Icinga
+    f_Install-Plugins
+    f_Install-NRPE
+    f_Install-DB
+    f_Install-Configs
 
+    echo "Installation finished"
+    #}}}
+}    
+
+f_Install-Icinga(){
     echo "Installing Icinga ${ICINGA_VERSION} into ${DESTDIR}"
     f_Install_ICINGA "$(f_Prepare_ICINGA ${PKGDIR})"
-    
+}
+
+f_Install-Plugins(){
     echo "Installing Nagios-Plugins ${NAGIOS_PLUGINGS_VERSION} into ${DESTDIR}"
     f_Install_NAGIOS_PLUGINS "$(f_Prepare_NAGIOS_PLUGINS ${PKGDIR})"
+}
 
+f_Install-NRPE(){
     echo "Installing NRPE-Plugin ${NRPE_VERSION} into ${DESTDIR}"
     f_Install_NRPE "$(f_Prepare_NRPE ${PKGDIR})"
+}
 
+f_Install-DB(){
     echo "Setup Icinga database"
     f_Install_IcingaDatabase "fresh"
     f_Install_IcingaTables 
+}
 
+f_Install-Configs(){
     echo "Deploying configurations"
     f_DeployConfigs
     find ${DESTDIR}/etc/ -type f -exec chmod 640 {} \; || exit 1
-
-    echo "Installation finished"
-
-    
-    #}}}
 }
 
 f_ClientInstall(){
@@ -220,54 +237,51 @@ f_DeployNRPEConfigs(){
     #}}}
 }
 
-f_Icinga_MySQL_Setup(){
-    #{{{
-    f_Install_IcingaDatabase
-    f_Install_IcingaTables
-    #}}} 
-}
-
 f_DB_Check(){
     # test database existance
+    # TODO: check command doesn't work: -e param of mysql complains
+    # TODO: return value handling
     echo "Checking database status!"
     echo "!Need mysql Root-User password now!"
-    DBS=`mysql -u root -p -Bse 'show databases'|egrep -v 'information_schema|mysql'`
+    DBS=`mysql -u root -p -Bse "SHOW DATABASES LIKE '${ICINGA_DB}'"`
     for db in $DBS;
     do
         if [ "${db}" = "${ICINGA_DB}" ]; then
-            return 0;
+            return "0";
         fi
     done
-    return 1;
+    return "1";
 }
 
 f_Install_IcingaDatabase(){
     #{{{
-    if [[ $(f_DB_Check) -eq 0 && "$1" != "fresh" ]]; then
-        echo "Database exists, no need to configure";
-        return 1;
-    fi
-    if [ "$1" = "fresh" ]; then
-        echo "Database cleanup requested"
-        echo "!Need mysql Root-User password now!"
-        mysqladmin -u root -p drop $ICINGA_DB
-        if [ $? -ne 0 ]; then
-            echo "Error in database cleanup" >&2;
-            exit 1;
+    f_NeedRoot
+    if [ -d "/var/lib/mysql/${ICINGA_DB}" ]; then
+        if [ "$1" != "fresh" ]; then
+            echo "Database exists, no need to configure";
+            return 1;
         fi
-        echo "Cleanup done!"
+        if [ "$1" = "fresh" ]; then
+            echo "Database cleanup requested"
+            echo "!Need mysql Root-User password now!"
+            mysqladmin -u root -p drop $ICINGA_DB
+            if [ $? -ne 0 ]; then
+                echo "Error in database cleanup" >&2;
+                exit 1;
+            fi
+            echo "Cleanup done!"
+        fi
     fi
 
     echo "Creating new database ${ICINGA_DB}"
     echo "!Need mysql Root-User password now!"
     #mysqladmin -u root -p create $ICINGA_DB
-    mysql -u root -p -Bse <<EOM
-CREATE DATABASE ${ICINGA_DB};
-GRANT USAGE ON *.* TO '${ICINGA_DBUSER}'@'localhost' IDENTIFIED BY '${ICINGA_DBPASS}' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0;
-GRANT SELECT , INSERT , UPDATE , DELETE ON ${ICINGA_DB}.* TO '${ICINGA_DBUSER}'@'localhost';
-FLUSH PRIVILEGES ;
-quit
-EOM
+    #mysql -u root -p -Bse <<EOM
+    echo "CREATE DATABASE ${ICINGA_DB};\
+        GRANT USAGE ON *.* TO '${ICINGA_DBUSER}'@'localhost' IDENTIFIED BY '${ICINGA_DBPASS}' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0;\
+        GRANT SELECT , INSERT , UPDATE , DELETE ON ${ICINGA_DB}.* TO '${ICINGA_DBUSER}'@'localhost';\
+        FLUSH PRIVILEGES ;" | mysql -u root -p -Bs
+
     if [ $? -ne 0 ]; then
         echo "Error in database setup" >&2;
         exit 1;
@@ -279,6 +293,7 @@ EOM
 f_Install_IcingaTables(){
     #{{{
     echo "Checking table structure"
+    echo "!Need mysql Root-User password now!"
     tablecount=$((`mysql -u root -p -Bse "SHOW TABLES FROM $ICINGA_DB"|wc -l`))
     if [ $tablecount -ne 0 ]; then
         echo "Database is not empty, will not continue deploying structure"
@@ -292,6 +307,7 @@ f_Install_IcingaTables(){
         echo "Error in table setup" >&2;
         exit 1;
     fi
+    echo "Table structure created"
     #}}}
 }
 
@@ -300,7 +316,8 @@ f_AddSystemUser(){
     if ! egrep -e "^${SYSTEM_USER}:.*$" /etc/passwd >/dev/null; then
         echo "Create new system-user: ${SYSTEM_USER}"
         f_NeedRoot
-        useradd -M --system ${SYSTEM_USER}
+        addgroup --system ${SYSTEM_GROUP}
+        adduser --no-create-home --system --ingroup ${SYSTEM_GROUP} ${SYSTEM_USER}
         if [ $? -ne 0 ]; then
             echo "Error during user creation." >&2;
             exit 1;
@@ -327,15 +344,9 @@ f_InstallCompilationRequirements(){
         libgd2-xpm-dev \
         libjpeg-dev \
         libpng-dev \
-        #mysql-server \
-        #mysql-client \
         libdbi0-dev \
-        #libapache2-mod-php5 \
-        #php5-mysql \
+        libssl-dev \
         snmp 
-        #\
-        #samba-common \
-        #samba-client
     if [ $? -ne 0 ]; then
         echo "Error during installation of compilation requirements"
         exit 1
@@ -353,7 +364,7 @@ f_InstallIcingaRequirements(){
         mysql-client \
         libapache2-mod-php5 \
         php5-mysql
-    if [ $? -ne 0]; then
+    if [ $? -ne 0 ]; then
         echo "Error during installation of Icinga requirements"
         exit 1
     fi
@@ -392,14 +403,15 @@ f_Prepare_ICINGA(){
         f_DownloadArchive "${1}/" "icinga-${ICINGA_VERSION}.tar.gz" ${ICINGA_URL}
     fi
     f_PrepareArchive "${1}/" "icinga-${ICINGA_VERSION}.tar.gz"
-    echo "${1}/icinga-${ICINGA_VERSION}/"
     #}}}
 }
 
 f_Compile_ICINGA(){
     #{{{
-    ${1}/configure \
-        --prefix=${BASEDIR} \
+    back=$(pwd)
+    cd ${1} || exit 1
+    ./configure \
+        --prefix=${DESTDIR} \
         --enable-idoutils \
         --enable-ssl \
         --with-icinga-group=${SYSTEM_USER} \
@@ -407,6 +419,7 @@ f_Compile_ICINGA(){
         --with-command-group=${SYSTEM_USER} \
         --with-command-user=${SYSTEM_USER} && \
         make all || exit 1
+    cd ${back}
     #}}}
 }
 
@@ -420,7 +433,6 @@ f_Install_ICINGA(){
         make install-init && \
         make install-commandmode && \
         make install-idoutils && \
-        make install-webconf && \
         make distclean
     fi
     cd ${STARTDIR}
@@ -430,7 +442,7 @@ f_Install_ICINGA(){
 f_Prepare_NRPE(){
     #{{{
     if test ! -d "${1}"; then
-        mkdir -p $1
+        mkdir -p "$ {1}"
     fi
     if test ! -e "${1}/nrpe-${NRPE_VERSION}.tar.gz"; then
         f_DownloadArchive "${1}/" "nrpe-${NRPE_VERSION}.tar.gz" ${NRPE_URL}
@@ -442,13 +454,16 @@ f_Prepare_NRPE(){
 
 f_Compile_NRPE(){
     #{{{
-    ${1}/configure \
-        --prefix=${BASEDIR}/icinga\
+    back=$(pwd)
+    cd ${1} || exit 1
+    ./configure \
+        --prefix=${DESTDIR}\
         --with-nrpe-user=${SYSTEM_USER} \
         --with-nrpe-group=${SYSTEM_USER} \
         --with-nagios-user=${SYSTEM_USER} \
         --with-nagios-group=${SYSTEM_USER} && \
         make all || exit 1
+    cd ${back}
     #}}}
 }
 
@@ -481,7 +496,8 @@ f_Prepare_NAGIOS_PLUGINS(){
 
 f_Compile_NAGIOS_PLUGINS(){
     #{{{
-    ${1}/configure && \
+    cd ${1} || exit 1
+    ./configure \
         --prefix=${DESTDIR} \
         --with-nagios-user=${SYSTEM_USER} \
         --with-nagios-group=${SYSTEM_USER} && \
