@@ -20,6 +20,8 @@ ICINGA_DB="icinga"
 ICINGA_DBUSER="icinga"
 ICINGA_DBPASS="icinga"
 
+SUDO_GROUP="admin"
+
 BASEDIR="/usr/local/"
 
 DESTDIR=${BASEDIR}/icinga
@@ -155,11 +157,21 @@ f_ClientInstall(){
             f_AddSystemUser
             echo "Deploying binaries."
             ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -m 755 -d ${DESTDIR} || exit 1
-            # copy over pre-compiled binaries
-            cp --archive ${STARTDIR}/binaries/client/${arch}/* ${DESTDIR} || exit 1
-            # setup owner
-            chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/bin/ || exit 1
-            chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/libexec/ || exit 1
+            # install pre-compiled binaries
+            src_bin="${STARTDIR}/binaries/client/${arch}"
+            find ${src_bin}/* -not -empty -type d -exec  \;
+            for d in `ls ${src_bin}`;
+            do
+                src_file=`find ${d}/* -not -empty -type f -printf "%f\n"`
+                install -g ${SUDO_GROUP} -o ${SYSTEM_USER} -m 750 -d ${DESTDIR}/${d}
+                install -g ${SUDO_GROUP} -o ${SYSTEM_USER} -m 750 ${src_bin}/${d}/${src_file} ${DESTDIR}/${d}/${src_file}
+            done
+            # setup special files
+
+            chown root.${SUDO_GROUP} ${DESTDIR}/libexec/check_ide_smart || exit 1
+            chmod u+rwxs ${DESTDIR}/libexec/check_ide_smart || exit 1
+
+
             # setup owner rights
             chmod -R 755 ${DESTDIR}/bin/ ${DESTDIR}/libexec/ || exit 1
 
