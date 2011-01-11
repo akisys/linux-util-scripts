@@ -7,7 +7,8 @@ EXTRACTOR_SRC=decomp.in
 DATA_FILE=deploy.tgz
 DATA_FOLDERS=configs\
 			scripts\
-			binaries
+			binaries\
+			contrib/build
 INSTALLER_PAYLOAD= payload.tgz
 INSTALLER_FILE= icinga_setup.bin
 
@@ -41,19 +42,20 @@ prepare-setup: prepare-data
 	@bash -n $(SCRIPT_FILE)
 
 prepare-data:
+	@ $(MAKE) -s -C contrib/
 	@tar czvf $(PWD)/$(DATA_FILE) --exclude="\.git*" $(DATA_FOLDERS)
 
 testsetup: prepare-setup
 
-distclean: clean clean-up
 
 clean:
 	@rm -f $(INSTALLER_FILE)
 
+distclean: clean clean-up
+	@ $(MAKE) -s -C contrib/ $@
+
 clean-up:
-	@echo -n "Cleaning up ... "
 	@rm -f $(SCRIPT_FILE)
 	@rm -f $(DATA_FILE)
 	@rm -f $(INSTALLER_PAYLOAD)
 	@rm -f $(EXTRACTOR_FILE)
-	@echo "Done!"
