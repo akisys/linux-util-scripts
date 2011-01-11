@@ -136,7 +136,7 @@ f_Install-DB(){
 f_Install-Configs(){
     echo "Deploying configurations"
     f_DeployConfigs
-    find ${DESTDIR}/etc/ -type f -exec chmod 640 {} \; || exit 1
+    find ${DESTDIR}/etc/ -type f -exec chmod 664 {} \; || exit 1
 }
 
 f_ClientInstall(){
@@ -159,33 +159,36 @@ f_ClientInstall(){
             ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -m 755 -d ${DESTDIR} || exit 1
             # install pre-compiled binaries
             src_bin="${STARTDIR}/binaries/client/${arch}"
-            find ${src_bin}/* -not -empty -type d -exec  \;
             for d in `ls ${src_bin}`;
             do
-                src_file=`find ${d}/* -not -empty -type f -printf "%f\n"`
-                install -g ${SUDO_GROUP} -o ${SYSTEM_USER} -m 750 -d ${DESTDIR}/${d}
-                install -g ${SUDO_GROUP} -o ${SYSTEM_USER} -m 750 ${src_bin}/${d}/${src_file} ${DESTDIR}/${d}/${src_file}
+                if [ -d "${src_bin}/${d}" ]; then
+                    install -g ${SUDO_GROUP} -o ${SYSTEM_USER} -d ${DESTDIR}/${d}
+                    install -g ${SUDO_GROUP} -o ${SYSTEM_USER} "${src_bin}/${d}"/* "${DESTDIR}/${d}/"
+                fi
             done
+            # setup owner rights
+            chmod -R 754 ${DESTDIR}/bin/ ${DESTDIR}/libexec/ || exit 1
+
             # setup special files
             chown root.${SUDO_GROUP} ${DESTDIR}/libexec/check_ide_smart || exit 1
             chmod u+rwxs ${DESTDIR}/libexec/check_ide_smart || exit 1
             
             # setup contrib files
-            find ${STARTDIR}/contrib/build/ -not -empty -type f -exec {} ${DESTDIR}/libexec/ || exit 1 ;
-
-
-            # setup owner rights
-            chmod -R 755 ${DESTDIR}/bin/ ${DESTDIR}/libexec/ || exit 1
+            find ${STARTDIR}/contrib/build/ -not -empty -type f -exec {} ${DESTDIR}/libexec/ \; || exit 1
 
             echo "Deploying configuration."
             f_DeployNRPEConfigs
-            find ${DESTDIR}/etc/ -type f -exec chmod 640 {} \; || exit 1
+            find ${DESTDIR}/etc/ -type f -exec chmod 664 {} \; || exit 1
 
             echo "Installing required software packages"
             f_InstallRuntimeRequirements
             echo "Setup service startup"
             update-rc.d nrped defaults
             service nrped restart
+            if [ $? -ne 0 ]; then
+                #sysV fallback
+                /etc/init.d/nrped restart
+            fi
             return 0
         fi
     done
@@ -212,12 +215,12 @@ f_DeployIcingaConfigs(){
     # create folder structure
     ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -d ${DESTDIR}/etc/objects/hosts || exit 1
     # copy over icinga configs incl. hosts and webis-configs
-    cp --archive ${STARTDIR}/configs/icinga/etc/* ${DESTDIR}/etc/ || exit 1
+    cp --archive ${STARTDIR}/configs/icinga/etc/*.cfg ${DESTDIR}/etc/ || exit 1
     # setup owner
     chown -R ${SYSTEM_USER}.${SYSTEM_GROUP} ${DESTDIR}/etc/ || exit 1
     # setup owner rights
     chmod 755 ${DESTDIR}/etc/ || exit 1
-    find ${DESTDIR}/etc/ -type f -exec chmod 640 {} \; || exit 1
+    find ${DESTDIR}/etc/ -type f -exec chmod 664 {} \; || exit 1
     
     # install apache web-config
     ${INSTALL} -o root -g root -m 644 ${STARTDIR}/configs/icinga/apache/* /etc/apache2/conf.d/ || exit 1
@@ -245,7 +248,7 @@ f_DeployNRPEConfigs(){
     # create folder structure
     ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -d ${DESTDIR}/etc || exit 1
     # install nrpe config
-    ${INSTALL} -g ${SYSTEM_GROUP} -o ${SYSTEM_USER} -m 644 ${STARTDIR}/configs/nrpe/nrpe.cfg ${DESTDIR}/etc/ || exit 1
+    ${INSTALL} -g ${SUDO_GROUP} -o ${SYSTEM_USER} -m 664 ${STARTDIR}/configs/nrpe/*.cfg ${DESTDIR}/etc/ || exit 1
     # install nrpe daemon
     ${INSTALL} -g root -o root -m 755 ${STARTDIR}/scripts/init-scripts/nrped /etc/init.d/ || exit 1
     #}}}
@@ -376,6 +379,7 @@ f_InstallIcingaRequirements(){
     aptitude update && aptitude --without-recommends -y install \
         openssl \
         snmp \
+        libdbd-mysql \
         mysql-server \
         mysql-client \
         libapache2-mod-php5 \
@@ -393,10 +397,21 @@ f_InstallRuntimeRequirements(){
     aptitude update && aptitude --without-recommends -y install \
         openssl \
         snmp \
+        lm-sensors \
         smartmontools
     if [ $? -ne 0 ]; then
         echo "Error during installation of runtime requirements"
         exit 2
+    fi
+
+    # setup sensors package
+    if [ -z `grep 'coretemp' /etc/modules` ]; then
+        yes|sensors-detect
+        service module-init-tools start
+        if [ $? -ne 0 ]; then
+            # sysv fallback
+            /etc/init.d/module-init-tools start
+        fi
     fi
     #}}}
 }

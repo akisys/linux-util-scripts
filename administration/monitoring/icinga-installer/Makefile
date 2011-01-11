@@ -43,7 +43,7 @@ prepare-setup: prepare-data
 
 prepare-data:
 	@ $(MAKE) -s -C contrib/
-	@tar czvf $(PWD)/$(DATA_FILE) --exclude="\.git*" $(DATA_FOLDERS)
+	@tar czvf $(PWD)/$(DATA_FILE) --exclude="\.git*" --exclude="*\~" $(DATA_FOLDERS)
 
 testsetup: prepare-setup
 

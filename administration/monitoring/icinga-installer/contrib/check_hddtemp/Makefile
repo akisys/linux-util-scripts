@@ -5,10 +5,10 @@ BUILD=../build
 DEPLOY_SRC=deploy.sh
 DEPLOY_BIN=deploy
 
-TARAGET_BIN=check_hddtemp.sh
+TARGET_BIN="check_hddtemp.sh"
 
 
-SUMCMD=/usr/bin/sum payload
+SUMCMD=/usr/bin/sum ./$(TARGET_BIN)
 
 .PHONY: all
 
@@ -21,7 +21,9 @@ prepare-installer: prepare-payload
 	@sed -i "s/\[\[SECOND_SUM\]\]/$(word 2,$(shell $(SUMCMD)))/g" $(DEPLOY_BIN)
 	@sed -i "s/\[\[TARGET_FILE\]\]/$(TARGET_BIN)/g" $(DEPLOY_BIN)
 
-all: prepare-installer
+all: build clean
+
+build: prepare-installer
 	@echo -n "Building check_hddtemp.sh installer ... "
 	@mkdir -p $(BUILD)
 	@cat payload >> deploy

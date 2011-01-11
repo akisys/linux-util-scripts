@@ -25,8 +25,7 @@ TARGET_PATH="$TARGET_DIR/$TARGET_FILE"
 tail -n +$SCRIPT_LINES "$0" | zcat > "$TARGET_PATH"
 SUM=`sum $TARGET_PATH` 
 ASUM1=`echo "${SUM}" | awk '{print $1}'`
-ASUM2=`echo "${SUM}" | 
-awk '{print $2}'`
+ASUM2=`echo "${SUM}" | awk '{print $2}'`
 if [ ${ASUM1} -ne ${SUM1} ] || [ ${ASUM2} -ne ${SUM2} ]; then
     echo "The download file appears to be corrupted. Please download"
     echo "the file again and re-try the installation."

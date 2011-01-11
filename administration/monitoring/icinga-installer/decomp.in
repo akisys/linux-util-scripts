@@ -30,6 +30,10 @@ if [ ${ASUM1} -ne ${SUM1} ] || [ ${ASUM2} -ne ${SUM2} ]; then
     exit 1
 fi
 
+if [ $1 = "--extract" ]; then
+    tar -x -C "${2}" -f ${TMPDIR}/${BINARY}
+    exit 0
+fi
 tar -x -C ${TMPDIR} -f ${TMPDIR}/${BINARY}
 cd ${TMPDIR}
 ./setup.sh "$@"
