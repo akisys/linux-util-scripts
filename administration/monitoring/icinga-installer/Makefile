@@ -1,3 +1,6 @@
+#DESCRIPTION. Makefile to package all necessary files and build a installation binary.
+#AUTHOR. alexander.kuemmel
+
 SCRIPT_FILE=setup.sh
 SCRIPT_SRC=setup.in
 
@@ -23,6 +26,8 @@ build-installer: init
 	@cat $(EXTRACTOR_FILE) $(INSTALLER_PAYLOAD) > $(INSTALLER_FILE)
 	@chmod 755 $(INSTALLER_FILE)
 	@md5sum -b $(INSTALLER_FILE) > $(INSTALLER_FILE).md5
+	@mkdir -p dist
+	@mv $(INSTALLER_FILE) $(INSTALLER_FILE).md5 dist/
 	@echo "Done!"
 
 init: prepare-installer; @echo -n "Preparing requirements ... "
