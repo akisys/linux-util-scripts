@@ -1,0 +1,6 @@
+a1       LSI MegaRAID SAS 9280-8e bios:3.10.00 fw:2.40.13-0803 encl:2 ldrv:1  rbld:30% batt:FAULT, module missing, pack missing, charge failed/0mV/0C
+a1e49s1   SEAGATE ST32000444SS       1863GiB  a1d0  online  
+     write errors: corr:  0    delay:  0    rewrit:  0    tot/corr:  0    tot/uncorr:  0   
+      read errors: corr:430Mi  delay: 12    reread:  0    tot/corr:430Mi  tot/uncorr:  1   
+    verify errors: corr:  2Gi  delay:220    revrfy:  0    tot/corr:  2Gi  tot/uncorr:  0   
+    temperature: current:25C threshold:68C
