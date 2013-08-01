@@ -31,7 +31,7 @@ def clone_repos():
       if re.match('^[^\six#]',l):
         # clone repo
         repo = l
-        if not git("clone", repo, cwd = clone_dir):
+        if not git("clone", "--mirror", repo, cwd = clone_dir):
           continue
         # mark as cloned
         repo = "i {0}\n".format(repo)
@@ -50,7 +50,7 @@ def remove_old_repos():
     for idx in xrange(len(repolist)):
       l = repolist[idx].strip()
       if re.match('^[x]',l):
-        repodir = clone_dir + "/" + os.path.basename(l)[:-4]
+        repodir = clone_dir + "/" + os.path.basename(l)
         shutil.rmtree(repodir, ignore_errors=True)
         rm_indices.append(idx)
     for i in rm_indices:
@@ -68,8 +68,8 @@ def update_repos():
     for idx in xrange(len(repolist)):
       l = repolist[idx].strip()
       if re.match('^[i]',l):
-        repodir = clone_dir + "/" + os.path.basename(l)[:-4]
-        git("pull", "origin", cwd = repodir)
+        repodir = clone_dir + "/" + os.path.basename(l)
+        git("fetch", "--all", cwd = repodir)
   pass
 
 def git(*args, **kwargs):
