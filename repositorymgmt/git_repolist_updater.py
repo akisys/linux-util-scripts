@@ -95,8 +95,8 @@ def log_rotate():
   if st.st_size >= max_log_size:
     logfiles = glob.glob("{0}/{1}.[0-9].gz".format(clone_dir,os.path.basename(log_file)))
     for i in xrange(len(logfiles),0,-1):
-      oldlog = logfiles[i-1][:-4]
-      newlog = "{0}.{1}.gz".format(oldlog,i+1)
+      oldlog = logfiles[i-1]
+      newlog = "{0}.{1}.gz".format(oldlog[:-5],i)
       os.rename(oldlog,newlog)
     f_in = open(log_file, "r+b")
     f_out = gzip.open(log_file + ".0.gz", "wb")
