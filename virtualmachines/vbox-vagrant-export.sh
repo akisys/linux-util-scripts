@@ -2,7 +2,7 @@
 #
 # Exports VirtualBox machines to compressed Box files, usable with vagrant.
 #
-# author: akisys@alexanderkuemmel.com
+# author: akisys _at_ alexanderkuemmel.com
 
 self=$(basename $0)
 

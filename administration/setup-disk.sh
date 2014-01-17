@@ -1,4 +1,6 @@
 #!/bin/bash
+# 
+# Automatic partitioning script.
 # author: alexander kuemmel
 #         michael voelske
 

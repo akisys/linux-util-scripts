@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 """Clones/Updates/Deletes a number of Repos read from a repo list file.
 
-@author: Alexander Kuemmel
-@email:  akisys@alexanderkuemmel.com
+@author: Alexander Kuemmel <akisys _at_ alexanderkuemmel.com>
 """
 
 import datetime

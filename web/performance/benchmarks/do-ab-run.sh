@@ -1,5 +1,9 @@
 #!/bin/bash
-
+#
+# Runs a server performance test with Apache Benchmark and collects and prints
+# the data into diagrams with Gnuplot.
+#
+# author: Alexander Kuemmel <akisys _at_ alexanderkuemmel.com>
 
 # bail on any error
 set -e

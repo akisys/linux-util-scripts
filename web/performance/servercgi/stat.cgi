@@ -1,4 +1,8 @@
 #!/bin/bash
+#
+# Minimal Bash CGI script to collect server information on request
+#
+# author: Alexander Kuemmel <akisys _at_ alexanderkuemmel.com>
 
 echo Content-type: text/plain
 echo ""
