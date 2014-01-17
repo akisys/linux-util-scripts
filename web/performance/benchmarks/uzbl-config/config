@@ -1,0 +1,84 @@
+# Example uzbl config. All settings are optional. You can use uzbl without
+# any config at all (but it won't do much).
+
+# === Core settings ==========================================================
+
+# common directory locations
+set prefix      = @(echo $PREFIX)@
+set data_home   = @(echo $UZBLTEST_CONFIG_DIR)@
+set cache_home  = /tmp/
+set config_home = @(echo $UZBLTEST_CONFIG_DIR)@
+
+# Interface paths.
+set fifo_dir   = /tmp
+set socket_dir = /tmp
+
+set shell_cmd       = sh -c
+
+# === General config aliases =================================================
+
+# Config related events (use the request function):
+# request MODE_CONFIG <mode> <key> = <value>
+set mode_config     = request MODE_CONFIG
+# request ON_EVENT <EVENT_NAME> <command>
+set on_event        = request ON_EVENT
+# request ON_SET   <key/glob> <command>
+set on_set          = request ON_SET
+# request MODMAP <From> <To>
+set modmap          = request MODMAP
+# request IGNORE_KEY <glob>
+set ignore_key      = request IGNORE_KEY
+# request TOGGLE_MODES <mode1> <mode2> ... <moden>
+set toggle_modes    = request TOGGLE_MODES
+
+set set_mode        = 
+set set_status      =
+set enable_pagecache = 0
+
+# Spawn path shortcuts. In spawn the first dir+path match is used in "dir1:dir2:dir3:executable"
+set scripts_dir      = @data_home:scripts
+
+#set request_handler  = @scripts_dir/loadtest.sh
+
+# === Dynamic event handlers =================================================
+
+# Load start handler
+@on_event   LOAD_START     @set_status <span foreground="khaki">wait</span>
+# Reset the keycmd on navigation
+@on_event   LOAD_START     @set_mode
+
+@on_event   LOAD_START          spawn @scripts_dir/loadtest.sh start %s
+@on_event   REQUEST_STARTING    spawn @scripts_dir/loadtest.sh request %s
+
+
+# Load commit handlers
+@on_event   LOAD_COMMIT    @set_status <span foreground="green">recv</span>
+
+# Userscripts/per-site-settings. See the script and the example configuration for details
+#@on_event   LOAD_COMMIT    spawn @scripts_dir/per-site-settings.py @data_home/uzbl/per-site-settings
+
+# Load finish handlers
+@on_event   LOAD_FINISH    @set_status <span foreground="gold">done</span>
+@on_event   LOAD_FINISH    spawn @scripts_dir/loadtest.sh stop %s
+@on_event   LOAD_ERROR    spawn @scripts_dir/loadtest.sh error %s %s
+
+# === Behaviour and appearance ===============================================
+
+# Custom CSS can be defined here, including link follower hint styles
+set stylesheet_uri = @data_home/style.css
+
+set show_status       = 0
+set status_top        = 0
+
+# === Useragent setup ========================================================
+
+set useragent         = Uzbl (Webkit @{WEBKIT_MAJOR}.@{WEBKIT_MINOR}) (@(+uname -sm)@ [@ARCH_UZBL])
+
+# === Post-load misc commands ================================================
+sync_spawn_exec @scripts_dir/load_cookies.sh @data_home/data/session-cookies.txt
+sync_spawn_exec @scripts_dir/load_cookies.sh @data_home/data/session-cookies.txt
+
+# Set the "home" page.
+set uri = 
+
+# vim: set fdm=syntax:
